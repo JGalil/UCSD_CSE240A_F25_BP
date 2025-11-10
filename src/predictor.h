@@ -38,6 +38,7 @@ extern const char *bpName[];
 #define WT 2 // predict T, weak taken
 #define ST 3 // predict T, strong taken
 
+
 //------------------------------------//
 //      Predictor Configuration       //
 //------------------------------------//
@@ -46,6 +47,8 @@ extern int lhistoryBits; // Number of bits used for Local History
 extern int pcIndexBits;  // Number of bits used for PC index
 extern int bpType;       // Branch Prediction Type
 extern int verbose;
+extern int tlhistoryBits;  //local history length for tournament predictor
+extern int tghistoryBits;  //global history length for tournament predictor
 
 //------------------------------------//
 //    Predictor Function Prototypes   //
