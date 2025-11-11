@@ -72,7 +72,12 @@ void train_predictor(uint32_t pc, uint32_t target, uint32_t outcome, uint32_t co
 
 // Please add your code below, and DO NOT MODIFY ANY OF THE CODE ABOVE
 // 
-
+void saturating_add(uint8_t *counter, uint8_t max);
+void saturating_sub(uint8_t *counter, uint8_t min);
+void train_2b_counter(uint8_t *counter, uint8_t outcome);
+void train_3b_counter(uint8_t *counter, uint8_t outcome);
+uint32_t predict_2_bit(uint8_t counter);
+uint32_t predict_3_bit(uint8_t counter);
 
 
 #endif
