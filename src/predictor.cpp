@@ -27,12 +27,13 @@ const char *bpName[4] = {"Static", "Gshare",
 
 // define number of bits required for indexing the BHT here.
 int ghistoryBits = 15; // Number of bits used for Global History
+int c_ghistoryBits = 17;
 int bpType;            // Branch Prediction Type
 int verbose;
-int tlhistoryBits = 10;  //local history length for tournament predictor
-int clhistoryBits = 10;  //local history length for custom predictor
+int tlhistoryBits = 11;  //local history length for tournament predictor
+int clhistoryBits = 13;  //local history length for custom predictor
 int tghistoryBits = 12;  //global history length for tournament predictor
-int pcIndexBits = 10;    //index bits for tournament predictor
+int pcIndexBits = 11;    //index bits for tournament predictor
 
 //------------------------------------//
 //      Predictor Data Structures     //
@@ -90,7 +91,7 @@ void init_gshare()
 
 void init_custom_gshare()
 {
-  int c_bht_entries = 1 << ghistoryBits;
+  int c_bht_entries = 1 << c_ghistoryBits;
   c_bht_gshare = (uint8_t *)malloc(c_bht_entries * sizeof(uint8_t));
   int i = 0;
   for (i = 0; i < c_bht_entries; i++)
@@ -126,7 +127,7 @@ uint8_t gshare_predict(uint32_t pc)
 uint8_t custom_gshare_predict(uint32_t pc)
 {
   // get lower ghistoryBits of pc
-  uint32_t c_bht_entries = 1 << ghistoryBits;
+  uint32_t c_bht_entries = 1 << c_ghistoryBits;
   uint32_t pc_lower_bits = pc & (c_bht_entries - 1);
   uint32_t c_ghistory_lower_bits = c_ghistory & (c_bht_entries - 1);
   uint32_t index = pc_lower_bits ^ c_ghistory_lower_bits;
@@ -181,7 +182,7 @@ void train_gshare(uint32_t pc, uint8_t outcome)
 void train_custom_gshare(uint32_t pc, uint8_t outcome)
 {
   // get lower ghistoryBits of pc
-  uint32_t c_bht_entries = 1 << ghistoryBits;
+  uint32_t c_bht_entries = 1 << c_ghistoryBits;
   uint32_t pc_lower_bits = pc & (c_bht_entries - 1);
   uint32_t c_ghistory_lower_bits = c_ghistory & (c_bht_entries - 1);
   uint32_t index = pc_lower_bits ^ c_ghistory_lower_bits;
@@ -261,7 +262,7 @@ void init_custom(){
     c_local_prediction_table[i] = 4; //start wt
   }
 
-  uint32_t c_choice_entries = 1 << ghistoryBits;
+  uint32_t c_choice_entries = 1 << c_ghistoryBits;
   c_choice_predictor = (uint8_t *)malloc(c_choice_entries * sizeof(uint8_t));
   for(int i = 0; i < c_choice_entries; i++){
     c_choice_predictor[i] = WN; //start with weak global
@@ -271,7 +272,7 @@ void init_custom(){
 uint32_t custom_predict(uint32_t pc){
   //indices
   uint32_t pc_idx = pc & ((1 << pcIndexBits)-1);
-  uint32_t choice_index = (pc_idx ^ c_ghistory) & ((1<<ghistoryBits)-1);  //gshare ghist
+  uint32_t choice_index = (pc_idx ^ c_ghistory) & ((1<<c_ghistoryBits)-1);  //gshare ghist
 
 
   //local history and prediction
@@ -296,7 +297,7 @@ uint32_t tournament_predict(uint32_t pc){
   //indices
   uint32_t pc_idx = pc & ((1 << pcIndexBits)-1);
   uint32_t global_idx = t_ghistory & ((1 << tghistoryBits)-1);
-  uint32_t choice_index = (pc_idx ^ c_ghistory) & ((1<<pcIndexBits)-1);
+  uint32_t choice_index = (pc_idx ^ t_ghistory) & ((1<<tghistoryBits)-1);
 
   //local history and prediction
   uint16_t local_history = t_bht_local[pc_idx];
@@ -321,7 +322,7 @@ void train_tournament(uint32_t pc, uint32_t outcome){
   //indices
   uint32_t pc_idx = pc & ((1 << pcIndexBits)-1);
   uint32_t global_idx = t_ghistory & ((1 << tghistoryBits)-1);
-  uint32_t choice_index = (pc_idx ^ t_ghistory) & ((1<<pcIndexBits)-1);
+  uint32_t choice_index = (pc_idx ^ t_ghistory) & ((1<<tghistoryBits)-1);
 
   //get prediction again
   uint16_t local_history = t_bht_local[pc_idx];
@@ -360,7 +361,7 @@ void train_tournament(uint32_t pc, uint32_t outcome){
 void train_custom(uint32_t pc, uint32_t outcome){
   //indices
   uint32_t pc_idx = pc & ((1 << pcIndexBits)-1);
-  uint32_t choice_index = (pc_idx ^ c_ghistory) & ((1<<pcIndexBits)-1);
+  uint32_t choice_index = (pc_idx ^ c_ghistory) & ((1<<c_ghistoryBits)-1);
 
   //get prediction again
   uint16_t local_history = c_bht_local[pc_idx];
@@ -390,6 +391,7 @@ void train_custom(uint32_t pc, uint32_t outcome){
 
   //local history update
   c_bht_local[pc_idx] = ((c_bht_local[pc_idx] << 1) | outcome) & ((1 << clhistoryBits) - 1);
+  c_ghistory = ((c_ghistory << 1) | outcome) & ((1 << c_ghistoryBits) - 1);
 }
 
 void cleanup_tournament(){
@@ -502,7 +504,7 @@ void train_3b_counter(uint8_t *counter, uint8_t outcome)
 }
 
 uint32_t predict_2_bit(uint8_t counter){
-  if(counter > 2){
+  if(counter >= 2){
     return TAKEN;
   }
   else{
