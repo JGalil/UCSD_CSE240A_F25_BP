@@ -32,7 +32,7 @@ int bpType;            // Branch Prediction Type
 int verbose;
 int tlhistoryBits = 11;  //local history length for tournament predictor
 int clhistoryBits = 13;  //local history length for custom predictor
-int tghistoryBits = 12;  //global history length for tournament predictor
+int tghistoryBits = 13;  //global history length for tournament predictor
 int pcIndexBits = 11;    //index bits for tournament predictor
 
 //------------------------------------//
