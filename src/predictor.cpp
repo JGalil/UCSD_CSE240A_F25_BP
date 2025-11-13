@@ -69,10 +69,16 @@ uint8_t *c_local_prediction_table;
 uint8_t *c_choice_predictor;
 
 //TAGE
-int tage_ghistoryBits = 14;  // Reduced for budget
+/*
+int tage_ghistoryBits = 15;  // Reduced for budget
 int tage_num_tables = 5;     // Number of TAGE tables
 int tage_tag_widths[] = {7, 7, 8, 9, 10};  // Tag widths for each table
 int tage_table_sizes[] = {512, 1024, 2048, 4096, 8192};  // Entries per table
+*/
+int tage_ghistoryBits = 16;
+int tage_num_tables = 6;
+int tage_tag_widths[] = {8, 8, 9, 10, 11, 12};
+int tage_table_sizes[] = {1024, 2048, 4096, 8192, 16384, 32768};
 
 // TAGE data structures
 uint64_t tage_ghistory;
