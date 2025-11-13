@@ -27,13 +27,13 @@ const char *bpName[4] = {"Static", "Gshare",
 
 // define number of bits required for indexing the BHT here.
 int ghistoryBits = 15; // Number of bits used for Global History
-int c_ghistoryBits = 15;
+int c_ghistoryBits = 12;
 int bpType;            // Branch Prediction Type
 int verbose;
 int tlhistoryBits = 11;  //local history length for tournament predictor
-int clhistoryBits = 11;  //local history length for custom predictor
+int clhistoryBits = 10;  //local history length for custom predictor
 int tghistoryBits = 13;  //global history length for tournament predictor
-int pcIndexBits = 11;    //index bits for tournament predictor
+int pcIndexBits = 10;    //index bits for tournament predictor
 
 //------------------------------------//
 //      Predictor Data Structures     //
