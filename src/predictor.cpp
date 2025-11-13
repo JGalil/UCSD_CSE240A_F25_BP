@@ -27,11 +27,11 @@ const char *bpName[4] = {"Static", "Gshare",
 
 // define number of bits required for indexing the BHT here.
 int ghistoryBits = 15; // Number of bits used for Global History
-int c_ghistoryBits = 17;
+int c_ghistoryBits = 15;
 int bpType;            // Branch Prediction Type
 int verbose;
 int tlhistoryBits = 11;  //local history length for tournament predictor
-int clhistoryBits = 13;  //local history length for custom predictor
+int clhistoryBits = 11;  //local history length for custom predictor
 int tghistoryBits = 13;  //global history length for tournament predictor
 int pcIndexBits = 11;    //index bits for tournament predictor
 
@@ -445,7 +445,7 @@ void init_predictor()
     init_tournament();
     break;
   case CUSTOM:
-    init_tage();
+    init_custom();
     break;
   default:
     break;
@@ -469,7 +469,7 @@ uint32_t make_prediction(uint32_t pc, uint32_t target, uint32_t direct)
   case TOURNAMENT:
     return tournament_predict(pc);
   case CUSTOM:
-    return tage_predict(pc);
+    return tage_custom(pc);
   default:
     break;
   }
@@ -496,7 +496,7 @@ void train_predictor(uint32_t pc, uint32_t target, uint32_t outcome, uint32_t co
     case TOURNAMENT:
       return train_tournament(pc, outcome);
     case CUSTOM:
-      return train_tage(pc, outcome);
+      return train_custom(pc, outcome);
     default:
       break;
     }
