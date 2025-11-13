@@ -85,15 +85,4 @@ void init_custom();
 uint32_t custom_predict(uint32_t pc);
 void train_custom(uint32_t pc, uint32_t outcome);
 
-//tage
-extern int tage_ghistoryBits;
-extern int tage_num_tables;
-
-void init_tage();
-uint32_t tage_predict(uint32_t pc);
-void train_tage(uint32_t pc, uint32_t outcome);
-uint32_t tage_compute_index(uint32_t pc, int table_idx);
-uint8_t tage_compute_tag(uint32_t pc, int table_idx);
-uint32_t tage_fold_history(uint64_t history, int output_bits);
-
 #endif
