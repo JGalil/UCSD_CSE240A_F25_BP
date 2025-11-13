@@ -89,11 +89,9 @@ void train_custom(uint32_t pc, uint32_t outcome);
 extern int tage_ghistoryBits;
 extern int tage_num_tables;
 
-// Add these function prototypes
 void init_tage();
 uint32_t tage_predict(uint32_t pc);
 void train_tage(uint32_t pc, uint32_t outcome);
-void cleanup_tage();
 uint32_t tage_compute_index(uint32_t pc, int table_idx);
 uint8_t tage_compute_tag(uint32_t pc, int table_idx);
 uint32_t tage_fold_history(uint64_t history, int output_bits);
