@@ -27,11 +27,11 @@ const char *bpName[4] = {"Static", "Gshare",
 
 // define number of bits required for indexing the BHT here.
 int ghistoryBits = 15; // Number of bits used for Global History
-int c_ghistoryBits = 13;
+int c_ghistoryBits = 17;
 int bpType;            // Branch Prediction Type
 int verbose;
 int tlhistoryBits = 11;  //local history length for tournament predictor
-int clhistoryBits = 11;  //local history length for custom predictor
+int clhistoryBits = 13;  //local history length for custom predictor
 int tghistoryBits = 13;  //global history length for tournament predictor
 int pcIndexBits = 11;    //index bits for tournament predictor
 
@@ -68,6 +68,24 @@ uint8_t *c_local_prediction_table;
 //tournament choice
 uint8_t *c_choice_predictor;
 
+//TAGE
+/*
+int tage_ghistoryBits = 15;  // Reduced for budget
+int tage_num_tables = 5;     // Number of TAGE tables
+int tage_tag_widths[] = {7, 7, 8, 9, 10};  // Tag widths for each table
+int tage_table_sizes[] = {512, 1024, 2048, 4096, 8192};  // Entries per table
+*/
+int tage_ghistoryBits = 16;
+int tage_num_tables = 6;
+int tage_tag_widths[] = {8, 8, 9, 10, 11, 12};
+int tage_table_sizes[] = {1024, 2048, 4096, 8192, 16384, 32768};
+
+// TAGE data structures
+uint64_t tage_ghistory;
+uint8_t *tage_base_table;
+uint8_t **tage_tag_tables;
+uint8_t **tage_pred_counters;
+uint8_t *tage_useful_bits;
 
 
 //------------------------------------//
@@ -427,7 +445,7 @@ void init_predictor()
     init_tournament();
     break;
   case CUSTOM:
-    init_custom();
+    init_tage();
     break;
   default:
     break;
@@ -451,7 +469,7 @@ uint32_t make_prediction(uint32_t pc, uint32_t target, uint32_t direct)
   case TOURNAMENT:
     return tournament_predict(pc);
   case CUSTOM:
-    return custom_predict(pc);
+    return tage_predict(pc);
   default:
     break;
   }
@@ -478,7 +496,7 @@ void train_predictor(uint32_t pc, uint32_t target, uint32_t outcome, uint32_t co
     case TOURNAMENT:
       return train_tournament(pc, outcome);
     case CUSTOM:
-      return train_custom(pc, outcome);
+      return train_tage(pc, outcome);
     default:
       break;
     }
@@ -523,6 +541,203 @@ uint32_t predict_3_bit(uint8_t counter){
 }
 
 
+// TAGE functions
+void init_tage() {
+    int base_entries = 1 << tage_ghistoryBits;
+    
+    // Base table (simple gshare-like)
+    tage_base_table = (uint8_t *)malloc(base_entries * sizeof(uint8_t));
+    for (int i = 0; i < base_entries; i++) {
+        tage_base_table[i] = WN;
+    }
+    
+    // Allocate tag tables and prediction counters
+    tage_tag_tables = (uint8_t **)malloc(tage_num_tables * sizeof(uint8_t *));
+    tage_pred_counters = (uint8_t **)malloc(tage_num_tables * sizeof(uint8_t *));
+    
+    for (int i = 0; i < tage_num_tables; i++) {
+        int table_size = tage_table_sizes[i];
+        tage_tag_tables[i] = (uint8_t *)malloc(table_size * sizeof(uint8_t));
+        tage_pred_counters[i] = (uint8_t *)malloc(table_size * sizeof(uint8_t));
+        
+        for (int j = 0; j < table_size; j++) {
+            tage_tag_tables[i][j] = 0;  // Start with invalid tags
+            tage_pred_counters[i][j] = WN;
+        }
+    }
+    
+    // Useful bits (1-bit saturating counter per entry)
+    tage_useful_bits = (uint8_t *)malloc(tage_table_sizes[tage_num_tables-1] * sizeof(uint8_t));
+    for (int i = 0; i < tage_table_sizes[tage_num_tables-1]; i++) {
+        tage_useful_bits[i] = 0;
+    }
+    
+    tage_ghistory = 0;
+}
+
+uint32_t tage_predict(uint32_t pc) {
+    uint32_t base_idx = (pc ^ tage_ghistory) & ((1 << tage_ghistoryBits) - 1);
+    uint32_t base_pred = predict_2_bit(tage_base_table[base_idx]);
+    
+    // Check tag tables from longest to shortest history
+    int provider_table = -1;
+    uint32_t provider_pred = base_pred;
+    
+    for (int i = tage_num_tables - 1; i >= 0; i--) {
+        uint32_t idx = tage_compute_index(pc, i);
+        uint8_t tag = tage_compute_tag(pc, i);
+        
+        if (tage_tag_tables[i][idx] == tag) {
+            provider_table = i;
+            provider_pred = predict_2_bit(tage_pred_counters[i][idx]);
+            break;
+        }
+    }
+    
+    // If no tag match, use base prediction
+    if (provider_table == -1) {
+        return base_pred;
+    }
+    
+    return provider_pred;
+}
+
+uint32_t tage_compute_index(uint32_t pc, int table_idx) {
+    if (table_idx < 0 || table_idx >= tage_num_tables) return 0;
+    
+    // Use different hash combinations for each table
+    uint32_t history_mask = (1 << (tage_ghistoryBits / (table_idx + 1))) - 1;
+    uint32_t folded_history = tage_fold_history(tage_ghistory & history_mask, 8 + table_idx);
+    return (pc ^ (pc >> (table_idx + 1)) ^ folded_history) & (tage_table_sizes[table_idx] - 1);
+}
+
+
+uint8_t tage_compute_tag(uint32_t pc, int table_idx) {
+    if (table_idx < 0 || table_idx >= tage_num_tables) return 0;
+    
+    uint32_t history_mask = (1 << (tage_ghistoryBits / (table_idx + 2))) - 1;
+    uint32_t folded_history = tage_fold_history(tage_ghistory & history_mask, tage_tag_widths[table_idx] - 1);
+    uint32_t tag = (pc >> 3) ^ folded_history;
+    return tag & ((1 << tage_tag_widths[table_idx]) - 1);
+}
+
+uint32_t tage_fold_history(uint64_t history, int output_bits) {
+    if (output_bits <= 0 || output_bits >= 32) return 0;
+    
+    uint32_t folded = 0;
+    int shift = 0;
+    while (history && shift < 64) {
+        folded ^= (history & ((1 << output_bits) - 1));
+        history >>= output_bits;
+        shift += output_bits;
+    }
+    return folded;
+}
+
+void train_tage(uint32_t pc, uint32_t outcome) {
+    uint32_t base_idx = (pc ^ tage_ghistory) & ((1 << tage_ghistoryBits) - 1);
+    uint32_t base_pred = predict_2_bit(tage_base_table[base_idx]);
+    
+    // Find provider and alternate provider
+    int provider_table = -1;
+    int alt_table = -1;
+    uint32_t provider_idx = 0;
+    uint32_t alt_idx = 0;
+    
+    for (int i = tage_num_tables - 1; i >= 0; i--) {
+        uint32_t idx = tage_compute_index(pc, i);
+        uint8_t tag = tage_compute_tag(pc, i);
+        
+        if (tage_tag_tables[i][idx] == tag) {
+            if (provider_table == -1) {
+                provider_table = i;
+                provider_idx = idx;
+            } else if (alt_table == -1) {
+                alt_table = i;
+                alt_idx = idx;
+                break;
+            }
+        }
+    }
+    
+    // Update prediction counters
+    uint8_t provider_pred = base_pred;
+    uint8_t alt_pred = base_pred;
+    
+    if (provider_table != -1) {
+        provider_pred = predict_2_bit(tage_pred_counters[provider_table][provider_idx]);
+        train_2b_counter(&tage_pred_counters[provider_table][provider_idx], outcome);
+    } else {
+        // Train base predictor
+        train_2b_counter(&tage_base_table[base_idx], outcome);
+    }
+    
+    if (alt_table != -1) {
+        alt_pred = predict_2_bit(tage_pred_counters[alt_table][alt_idx]);
+    }
+    
+    // Update useful bits - FIXED: use correct indexing
+    if (provider_table != -1 && alt_table != -1) {
+        if (provider_pred != alt_pred) {
+            uint32_t useful_idx = provider_idx; // Use provider's index for useful bits
+            if (useful_idx < tage_table_sizes[tage_num_tables-1]) {
+                if (provider_pred == outcome) {
+                    // Provider was correct
+                    if (tage_useful_bits[useful_idx] < 3) {
+                        tage_useful_bits[useful_idx]++;
+                    }
+                } else {
+                    // Provider was wrong
+                    if (tage_useful_bits[useful_idx] > 0) {
+                        tage_useful_bits[useful_idx]--;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Allocation on misprediction - MORE AGGRESSIVE
+    if (provider_table != -1 && provider_pred != outcome) {
+        // Try to allocate in a new table
+        for (int i = provider_table + 1; i < tage_num_tables; i++) {
+            uint32_t new_idx = tage_compute_index(pc, i);
+            uint8_t new_tag = tage_compute_tag(pc, i);
+            
+            // Check if entry is unused or has low usefulness
+            if (tage_tag_tables[i][new_idx] != new_tag) {
+                if (i == tage_num_tables - 1 || 
+                    (new_idx < tage_table_sizes[tage_num_tables-1] && tage_useful_bits[new_idx] == 0)) {
+                    
+                    // Allocate new entry
+                    tage_tag_tables[i][new_idx] = new_tag;
+                    tage_pred_counters[i][new_idx] = (outcome == TAKEN) ? WT : WN;
+                    
+                    if (i < tage_num_tables - 1 && new_idx < tage_table_sizes[tage_num_tables-1]) {
+                        tage_useful_bits[new_idx] = 0; // Reset usefulness
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    
+    // Update global history
+    tage_ghistory = ((tage_ghistory << 1) | outcome);
+    // Keep history within bounds
+    if (tage_ghistoryBits < 64) {
+        tage_ghistory &= ((1ULL << tage_ghistoryBits) - 1);
+    }
+}
+void cleanup_tage() {
+    free(tage_base_table);
+    for (int i = 0; i < tage_num_tables; i++) {
+        free(tage_tag_tables[i]);
+        free(tage_pred_counters[i]);
+    }
+    free(tage_tag_tables);
+    free(tage_pred_counters);
+    free(tage_useful_bits);
+}
 
 
 //helper functions
